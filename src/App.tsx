@@ -111,6 +111,14 @@ const DiaryGrid: FC<DiaryGridProps> = ({ diaryEntries }) => {
     // I want to render the d3 grid irrespective of react's rendering
     const svgRef = useRef<SVGSVGElement | null>(null);
 
+  function getBrightness(color: string) {
+    // Convert color to RGB
+    const rgb = d3.rgb(color);
+    // Calculate perceived brightness
+    return (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) / 255;
+  }
+
+
   useEffect(() => {
     const parseDate: (dateString: string) => Date | null = d3.timeParse(
       "%Y-%m-%d"
@@ -199,21 +207,25 @@ const DiaryGrid: FC<DiaryGridProps> = ({ diaryEntries }) => {
         }
         return d.formattedDateWithDay;
       })
-      .style("fill", (d) => getMetric(d) > 0.6 ? "white" : "black")
+      .style("fill", (d) => {
+        const backgroundColor = d3.interpolateRdYlGn(getMetric(d));
+        const brightness = getBrightness(backgroundColor);
+        return brightness > 0.5 ? "black" : "white"; // Invert text color based on brightness
+      })    
       .style("font-size", fontSize + "px");
 
     // // Zoom
     // After zooming, the grid should display details of the entry 
     const zoomed = (event: any) => {
       svgGroup
-        // .transition()
-        // .duration(5)
-        // .ease(d3.easeLinear)
+        .transition()
+        .duration(20)
+        .ease(d3.easeLinear)
         .attr("transform", event.transform);
 
       const zoomLevel: number = event.transform.k;
       cells.selectAll("text").style("display", zoomLevel > 5 ? "none" : "block");
-      // cells.selectAll(".details").style("display", zoomLevel > 5 ? "block" : "none");
+      cells.selectAll(".details").style("display", zoomLevel > 5 ? "block" : "none");
     };
     if (svgRef.current) {
       d3.select(svgRef.current)
@@ -232,25 +244,75 @@ const DiaryGrid: FC<DiaryGridProps> = ({ diaryEntries }) => {
       .append("g")
       .attr("class", "details");
         
-    // Add the main content text
-    detailsGroup
-      .append("foreignObject")
-      .attr("x", 0)
-      .attr("y", 0)
-      .attr("width", cellSize)
-      .attr("height", cellSize)
-      .append("xhtml:div")
-      .style("font-size", fontSize / 20 + "px")
-      .style("color", "black")
-      .style("background-color", "#B5DFB2")
-      .style("opacity", 0.8)
-      .style("padding", "2px")
-      .style("margin", "2px")
-      .style("box-shadow", "0 1px 2px rgba(0, 0, 0, 0.3)")
-      .style("max-height", `${cellSize}px`) // Set max height to cell size
-      .style("overflow", "auto") 
-      .html((d) => `<pre style="white-space: pre-wrap; margin: 0;">${d.content}</pre>`);    
+  // Add the main content text
+  detailsGroup
+  .append("foreignObject")
+  .attr("x", 0)
+  .attr("y", 0)
+  .attr("width", cellSize) // Adjusted width for a smaller size
+  .attr("height", cellSize) // Adjusted height for a smaller size
+  .append("xhtml:div")
+  .style("font-size", fontSize / 10 + "px") // Reduced font size
+  .style("opacity", 1)
+  .style("padding", "8px") // Slightly smaller padding
+  .style("margin", "2px")
+  .style("box-shadow", "0 4px 8px rgba(0, 0, 0, 0.2)") // Stronger shadow
+  .style("border-radius", "10px") // More rounded corners
+  .style("max-width", `${cellSize / 1.2}px`) // Smaller max height
+  .style("max-height", `${cellSize / 1.2}px`) // Smaller max height
+  .style("overflow-y", "auto") // Scrollable content
+  .style("overflow-x", "hidden")
+  .style("word-wrap", "break-word") // Ensure text wraps within the container
+  .html((d) => `
+  <div style="font-family: 'Roboto', 'Open Sans', Arial, sans-serif; margin-bottom: 500em; width: ${cellSize / 1.4}px; height: ${cellSize / 1.3}px; word-wrap: break-word">
+    <h2 style="font-size: 1.2em; margin-bottom: 0.6em; font-weight: bold">${d.formattedDateWithDay}</h2>
+    ${d.entry_summary ? `<p style="font-style: italic; font-size: 1em; margin-bottom: 1.2em">${d.entry_summary}</p>` : ""}
     
+    ${d.sentiment || d.self_reflection || d.significance || d.social_interaction ? `
+    <div style="margin-bottom: 1.5em;">
+      <h3 style="font-size: 1em; margin-bottom: 0.5em; font-weight: 600">Metrics</h3>
+      <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.9em">
+        ${d.sentiment ? `<li><strong>Sentiment:</strong> ${d.sentiment.sentiment_score}</li> <li><strong>Emotional Rationale:</strong> ${d.sentiment.emotional_rationale}</li>` : ""}
+        ${d.self_reflection ? `<li><strong>Self Reflection:</strong> ${d.self_reflection.reflection_score}</li> <li><strong>Reason:</strong> ${d.self_reflection.reason}</li>` : ""}
+        ${d.significance ? `<li><strong>Significance:</strong> ${d.significance.score}</li> <li><strong>Level:</strong> ${d.significance.level}</li> <li><strong>Reason:</strong> ${d.significance.reason}</li>` : ""}
+        ${d.social_interaction ? `<li><strong>Social Interaction:</strong> ${d.social_interaction.intensity}</li> <li><strong>Reason:</strong> ${d.social_interaction.reason}</li>` : ""}
+      </ul>
+    </div>` : ""}
+    
+    ${d.entities && (d.entities.people.length || d.entities.organizations.length || d.entities.topics_concepts.length) ? `
+    <div style="margin-bottom: 1.5em;">
+      <h3 style="font-size: 1em; margin-bottom: 0.5em; font-weight: 600">Entities</h3>
+      <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.9em">
+        ${d.entities.people.length ? `<li><strong>People:</strong> ${d.entities.people.join(", ")}</li>` : ""}
+        ${d.entities.organizations.length ? `<li><strong>Organizations:</strong> ${d.entities.organizations.join(", ")}</li>` : ""}
+        ${d.entities.topics_concepts.length ? `<li><strong>Topics & Concepts:</strong> ${d.entities.topics_concepts.join(", ")}</li>` : ""}
+      </ul>
+    </div>` : ""}
+    
+    ${d.thoughts && d.thoughts.length ? `
+    <div style="margin-bottom: 1.5em;">
+      <h3 style="font-size: 1em; margin-bottom: 0.5em; font-weight: 600">Thoughts</h3>
+      <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.9em">
+        ${d.thoughts.map(t => `<li><strong>${t.name}:</strong> ${t.description}</li>`).join("")}
+      </ul>
+    </div>` : ""}
+    
+    ${d.events && d.events.length ? `
+    <div style="margin-bottom: 1.5em;">
+      <h3 style="font-size: 1em; margin-bottom: 0.5em; font-weight: 600">Events</h3>
+      <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.9em">
+        ${d.events.map(e => `<li><strong>${e.event_name}:</strong> ${e.refers_to}</li>`).join("")}
+      </ul>
+    </div>` : ""}
+    ${d.content ? `
+    <h3 style="font-size: 1em; margin-bottom: 0.5em; font-weight: 600">Content</h3>
+    <pre style="font-size: 0.9em; width: ${cellSize / 1.4}px; word-wrap: break-word; white-space: pre-wrap">${d.content}</pre>` : ""}
+
+  </div>
+`);
+
+
+      
     return () => {
       svg.selectAll("*").remove(); // Cleanup
     };
