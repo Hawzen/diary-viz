@@ -108,7 +108,8 @@ const App: FC = () => {
 };
 
 const DiaryGrid: FC<DiaryGridProps> = ({ diaryEntries }) => {
-  const svgRef = useRef<SVGSVGElement | null>(null);
+    // I want to render the d3 grid irrespective of react's rendering
+    const svgRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
     const parseDate: (dateString: string) => Date | null = d3.timeParse(
@@ -138,17 +139,17 @@ const DiaryGrid: FC<DiaryGridProps> = ({ diaryEntries }) => {
     // Color of the grid
     // The grid color is determined by a metric [0, 1]. Here I define a function that extracts that metric
     // I defined it here so that it can be easily changed
-    const getMetric = (entry: ProcessedDiaryEntry) => entry.significance.score;
+    const getMetric = (entry: ProcessedDiaryEntry) => (entry.sentiment.sentiment_score + 1) / 2;
 
     const svg = d3
       .select(svgRef.current)
       .attr("width", width)
       .attr("height", height);
 
-    const gridGroup = svg.append("g");
+    const svgGroup = svg.append("g");
 
     // Bind diaryEntries
-    const cells = gridGroup
+    const cells = svgGroup
       .selectAll(".cell")
       .data(processedData)
       .enter()
@@ -160,17 +161,17 @@ const DiaryGrid: FC<DiaryGridProps> = ({ diaryEntries }) => {
         return `translate(${x}, ${y})`;
       });
 
-    // Create the entries
+    // Create the entries / grid cells
     cells
       .append("rect")
       .attr("width", cellSize)
       .attr("height", cellSize)
-      .attr("fill", (d) => d3.interpolateBuGn(getMetric(d)))
-      .attr("stroke", (d) => d3.interpolateBuGn(getMetric(d)))
+      .attr("fill", (d) => d3.interpolateRdYlGn(getMetric(d)))
+      .attr("stroke", (d) => d3.interpolateRdYlGn(getMetric(d)))
       // Hover effect
       .on("mouseover", function (_, d) {
         d3.select(this).classed("selectedEntry", true);
-        document.documentElement.style.setProperty('--glow-color', d3.interpolateBuGn(getMetric(d) + 0.2));
+        document.documentElement.style.setProperty('--glow-color', d3.interpolateRdYlGn(getMetric(d) + 0.2));
       })
       .on("mouseout", function () {
         d3.select(this).classed("selectedEntry", false);
@@ -183,7 +184,6 @@ const DiaryGrid: FC<DiaryGridProps> = ({ diaryEntries }) => {
 
     // Add entry numbers
     cells
-      .filter((d) => true)
       .append("text")
       .attr("x", cellSize / 2)
       .attr("y", cellSize / 2)
@@ -191,6 +191,9 @@ const DiaryGrid: FC<DiaryGridProps> = ({ diaryEntries }) => {
       .attr("text-anchor", "middle")
       .attr("alignment-baseline", "middle")
       .text((d) => {
+        if (d.parsedDate?.getMonth() === 0 && d.parsedDate?.getDate() === 1) {
+          return d.parsedDate?.getFullYear();
+        }
         if (d.parsedDate?.getDate() === 1) {
           return d.formattedDate;
         }
@@ -199,12 +202,63 @@ const DiaryGrid: FC<DiaryGridProps> = ({ diaryEntries }) => {
       .style("fill", (d) => getMetric(d) > 0.6 ? "white" : "black")
       .style("font-size", fontSize + "px");
 
+    // // Zoom
+    // After zooming, the grid should display details of the entry 
+    const zoomed = (event: any) => {
+      svgGroup
+        // .transition()
+        // .duration(5)
+        // .ease(d3.easeLinear)
+        .attr("transform", event.transform);
+
+      const zoomLevel: number = event.transform.k;
+      cells.selectAll("text").style("display", zoomLevel > 5 ? "none" : "block");
+      // cells.selectAll(".details").style("display", zoomLevel > 5 ? "block" : "none");
+    };
+    if (svgRef.current) {
+      d3.select(svgRef.current)
+      .call(
+        d3.zoom<SVGSVGElement, unknown>()
+        
+        .on("zoom", zoomed)
+        .scaleExtent([0.5, 25])
+      );
+    }
+
+
+    // // Details section
+    // When zoomed in, the grid should display details of the entry
+    const detailsGroup = cells
+      .append("g")
+      .attr("class", "details");
+        
+    // Add the main content text
+    detailsGroup
+      .append("foreignObject")
+      .attr("x", 0)
+      .attr("y", 0)
+      .attr("width", cellSize)
+      .attr("height", cellSize)
+      .append("xhtml:div")
+      .style("font-size", fontSize / 20 + "px")
+      .style("color", "black")
+      .style("background-color", "#B5DFB2")
+      .style("opacity", 0.8)
+      .style("padding", "2px")
+      .style("margin", "2px")
+      .style("box-shadow", "0 1px 2px rgba(0, 0, 0, 0.3)")
+      .style("max-height", `${cellSize}px`) // Set max height to cell size
+      .style("overflow", "auto") 
+      .html((d) => `<pre style="white-space: pre-wrap; margin: 0;">${d.content}</pre>`);    
+    
     return () => {
       svg.selectAll("*").remove(); // Cleanup
     };
+    
   }, [diaryEntries]);
 
   return <svg ref={svgRef}></svg>;
 };
+
 
 export default App;
