@@ -68,6 +68,14 @@ interface MediaReference {
 
 interface DiaryEntry {
   date: string;
+  content: string;
+  character_count: number,
+  year: number,
+  day_of_year: number,
+  week_of_year: number,
+  day_of_week: string,
+  day_since_start: number,
+  week_since_start: number,
   sentiment: Sentiment;
   emotions: Emotions;
   entry_summary: string;
@@ -82,9 +90,7 @@ interface DiaryEntry {
 }
 
 interface ProcessedDiaryEntry extends DiaryEntry {
-  entryNumber: number;
   parsedDate: Date | null;
-  year: number;
   formattedDate: string;
   formattedDateWithDay: string;
 }
@@ -113,9 +119,8 @@ const DiaryGrid: FC<DiaryGridProps> = ({ diaryEntries }) => {
     const processedData: ProcessedDiaryEntry[] = diaryEntries.map(
       (entry, index) => ({
         ...entry,
-        entryNumber: index + 1,
+        day_since_start: index + 1,
         parsedDate: parseDate(entry.date),
-        year: parseDate(entry.date)!.getFullYear(),
         formattedDate: d3.timeFormat("%B")(parseDate(entry.date)!),
         formattedDateWithDay: d3.timeFormat("%b %d")(parseDate(entry.date)!),
       })
@@ -128,8 +133,12 @@ const DiaryGrid: FC<DiaryGridProps> = ({ diaryEntries }) => {
     const height: number = cellSize * Math.ceil(processedData.length / columns);
 
     // // Style 
-    // Font
+    // Font size
     const fontSize = cellSize / 5;
+    // Color of the grid
+    // The grid color is determined by a metric [0, 1]. Here I define a function that extracts that metric
+    // I defined it here so that it can be easily changed
+    const getMetric = (entry: ProcessedDiaryEntry) => entry.significance.score;
 
     const svg = d3
       .select(svgRef.current)
@@ -151,28 +160,26 @@ const DiaryGrid: FC<DiaryGridProps> = ({ diaryEntries }) => {
         return `translate(${x}, ${y})`;
       });
 
-    // Add rectangles
+    // Create the entries
     cells
       .append("rect")
       .attr("width", cellSize)
       .attr("height", cellSize)
-      .attr("fill", (d) => d3.interpolateBuGn(d.significance.score))
-      .attr("stroke", (d) => d3.interpolateBuGn(d.significance.score))
+      .attr("fill", (d) => d3.interpolateBuGn(getMetric(d)))
+      .attr("stroke", (d) => d3.interpolateBuGn(getMetric(d)))
+      // Hover effect
       .on("mouseover", function (_, d) {
         d3.select(this).classed("selectedEntry", true);
-        document.documentElement.style.setProperty('--glow-color', d3.interpolateBuGn(d.significance.score + 0.2));
+        document.documentElement.style.setProperty('--glow-color', d3.interpolateBuGn(getMetric(d) + 0.2));
       })
       .on("mouseout", function () {
         d3.select(this).classed("selectedEntry", false);
       })
-      // cool transition effect
+      // Initilization transition effect 
       .attr("opacity", 0)
       .transition()
-      // .duration(500 + Math.random() * 1000)
-      // Make the transition duration proportional to the significance score
-      .duration((d) => 500 + d.significance.score * 1000)
+      .duration((d) => 200 + getMetric(d) * 1500)
       .attr("opacity", 1);
-      
 
     // Add entry numbers
     cells
@@ -185,12 +192,11 @@ const DiaryGrid: FC<DiaryGridProps> = ({ diaryEntries }) => {
       .attr("alignment-baseline", "middle")
       .text((d) => {
         if (d.parsedDate?.getDate() === 1) {
-          // Show the month name AND the year
           return d.formattedDate;
         }
         return d.formattedDateWithDay;
       })
-      .style("fill", (d) => d.significance.score > 0.6 ? "white" : "black")
+      .style("fill", (d) => getMetric(d) > 0.6 ? "white" : "black")
       .style("font-size", fontSize + "px");
 
     return () => {
